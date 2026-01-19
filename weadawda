@@ -19,7 +19,6 @@
 
     local player = Players.LocalPlayer
     local camera = workspace.CurrentCamera
-    local menuName = "GENTO HUB V11"
 
     -- Store original values
     local originalWalkSpeed = 16
@@ -85,283 +84,238 @@
         MenuAccentRGB = {R = 0, G = 255, B = 180},
         MenuOpen = true,
         MenuBind = {Type = "KeyCode", Code = "Insert"},
-        Watermark = {Enabled = true},
         ChatWriter = {Enabled = false},
     }
 
--- Global Variables for Logic
-local followingPlayer = nil
-local spectatingPlayer = nil
-local annoyingPlayer = nil
-local annoyingAllEnabled = false
-local annoyingAllTarget = nil
-local annoyingAllIndex = 0
-local annoyingMode = nil
-local annoyingOrbitAngle = 0
-local lastAnnoyingSwitch = 0
-local lastAnnoyingAllSwitch = 0
-local lastAnnoyingMove = 0
-local lastAnnoyingSnap = 0
-local lastBunnyhop = 0
-local shiftBoostSpeed = 140
-local chatWriterLoopToken = 0
-local cameraLockHolding = false
-local cameraLockTarget = nil
-local cameraLockCircle = nil
-local camHoldKeyLabel = nil
-local listeningForCamHoldKey = false
-local watermarkFrame = nil
-local watermarkLabel = nil
-local fpsFrames = 0
-local fpsTimer = 0
-local fpsValue = 0
-local lastFpsUpdate = 0
-local lastFrameTime = 0
-local lastPingCheck = 0
-local pingCache = nil
+    -- Global Variables for Logic
+    local followingPlayer = nil 
+    local spectatingPlayer = nil
+    local annoyingPlayer = nil
+    local annoyingAllEnabled = false
+    local annoyingAllTarget = nil
+    local annoyingAllIndex = 0
+    local annoyingMode = nil
+    local annoyingOrbitAngle = 0
+    local lastAnnoyingSwitch = 0
+    local lastAnnoyingAllSwitch = 0
+    local lastAnnoyingMove = 0
+    local lastAnnoyingSnap = 0
+    local lastBunnyhop = 0
+    local shiftBoostSpeed = 140
+    local chatWriterLoopToken = 0
+    local cameraLockHolding = false
+    local cameraLockTarget = nil
+    local cameraLockCircle = nil
+    local camHoldKeyLabel = nil
+    local listeningForCamHoldKey = false
 
-local followTeleportInterval = 0.25
-local lastFollowTeleport = 0
-local followWeld = nil
-local StopFollowWeld = function()
-    if followWeld then
-        pcall(function() followWeld:Destroy() end)
-        followWeld = nil
+    local followTeleportInterval = 0.25
+    local lastFollowTeleport = 0
+    local followWeld = nil
+    local StopFollowWeld = function()
+        if followWeld then
+            pcall(function() followWeld:Destroy() end)
+            followWeld = nil
+        end
     end
-end
+    local selectedPlayerUserId = nil
+    local tpReturnCFrame = nil
+    local tpReturnUserId = nil
+    local isRunning = true
+    local ApplyMenuState
+    local connections = {}
+    local function TrackConnection(conn)
+        table.insert(connections, conn)
+        return conn
+    end
 
-local selectedPlayerUserId = nil
-local tpReturnCFrame = nil
-local tpReturnUserId = nil
-local isRunning = true
-local ApplyMenuState
-local connections = {}
-local function TrackConnection(conn)
-    table.insert(connections, conn)
-    return conn
-end
+    local espCache
 
-local espCache
+    local favoritesUserIds = {}
+    local teleportSearchQuery = ""
 
-local favoritesUserIds = {}
-local teleportSearchQuery = ""
+    local STAFF_KEYWORDS = {"admin", "mod", "moderator", "staff", "owner", "dev"}
+    local STAFF_MIN_RANK = 200
 
-local STAFF_KEYWORDS = {"admin", "mod", "moderator", "staff", "owner", "dev"}
-local STAFF_MIN_RANK = 200
+    local function HasStaffKeyword(text)
+        local lower = string.lower(text or "")
+        for _, kw in ipairs(STAFF_KEYWORDS) do
+            if string.find(lower, kw, 1, true) then
+                return true
+            end
+        end
+        return false
+    end
 
-local function HasStaffKeyword(text)
-    local lower = string.lower(text or "")
-    for _, kw in ipairs(STAFF_KEYWORDS) do
-        if string.find(lower, kw, 1, true) then
+    local function IsStaffPlayer(plr)
+        if not plr then return false end
+        if HasStaffKeyword(plr.Name) or HasStaffKeyword(plr.DisplayName) then
             return true
         end
+        return false
     end
-    return false
-end
 
-local function IsStaffPlayer(plr)
-    if not plr then return false end
-    if HasStaffKeyword(plr.Name) or HasStaffKeyword(plr.DisplayName) then
-        return true
-    end
-    return false
-end
-
-local function KickIfStaff(plr)
-    if SETTINGS.StaffDetect.Enabled and plr and plr ~= player and IsStaffPlayer(plr) then
-        player:Kick("Staff detected: " .. plr.Name)
-    end
-end
-
-local function GetPingMs()
-    local ping = nil
-    local network = Stats:FindFirstChild("Network")
-    if network then
-        local serverStats = network:FindFirstChild("ServerStatsItem")
-        if serverStats then
-            local pingItem = serverStats:FindFirstChild("Data Ping") or serverStats:FindFirstChild("Ping")
-            if pingItem and pingItem.GetValue then
-                local value = pingItem:GetValue()
-                local num = tonumber(value)
-                if num then
-                    ping = math.floor(num + 0.5)
-                end
-            end
+    local function KickIfStaff(plr)
+        if SETTINGS.StaffDetect.Enabled and plr and plr ~= player and IsStaffPlayer(plr) then
+            player:Kick("Staff detected: " .. plr.Name)
         end
     end
-    if not ping then
-        local perf = Stats:FindFirstChild("PerformanceStats")
-        if perf then
-            local pingItem = perf:FindFirstChild("Ping")
-            if pingItem and pingItem.GetValue then
-                local value = pingItem:GetValue()
-                local num = tonumber(value)
-                if num then
-                    ping = math.floor(num + 0.5)
-                end
-            end
-        end
-    end
-    return ping
-end
 
-TrackConnection(Players.PlayerAdded:Connect(function(plr)
-    KickIfStaff(plr)
-end))
-
-for _, plr in ipairs(Players:GetPlayers()) do
-    if plr ~= player then
+    TrackConnection(Players.PlayerAdded:Connect(function(plr)
         KickIfStaff(plr)
+    end))
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= player then
+            KickIfStaff(plr)
+        end
     end
-end
 
-local function SaveConfig()
-    local dataToSave = {
-        BoxESP = SETTINGS.BoxESP,
-        NameESP = SETTINGS.NameESP,
-        Distance = SETTINGS.Distance,
-        Tracers = SETTINGS.Tracers,
-        Fullbright = SETTINGS.Fullbright,
-        FOV = SETTINGS.FOV,
-        RGB = SETTINGS.RGB,
-        MenuAccentRGB = SETTINGS.MenuAccentRGB,
-        Favorites = favoritesUserIds,
-        MenuBind = SETTINGS.MenuBind,
-        Watermark = SETTINGS.Watermark
-    }
-    if writefile then pcall(function() writefile(ConfigName, HttpService:JSONEncode(dataToSave)) end) end
-end
-
-local function LoadConfig()
-    if isfile and isfile(ConfigName) then
-        pcall(function()
-            local decoded = HttpService:JSONDecode(readfile(ConfigName))
-            if decoded then
-                if decoded.BoxESP then SETTINGS.BoxESP = decoded.BoxESP end
-                if decoded.NameESP then SETTINGS.NameESP = decoded.NameESP end
-                if decoded.Distance then SETTINGS.Distance = decoded.Distance end
-                if decoded.Tracers then SETTINGS.Tracers = decoded.Tracers end
-                if decoded.Fullbright then SETTINGS.Fullbright = decoded.Fullbright end
-                if decoded.FOV then SETTINGS.FOV = decoded.FOV end
-                if decoded.RGB then
-                    SETTINGS.RGB = decoded.RGB
-                    SETTINGS.Color = Color3.fromRGB(SETTINGS.RGB.R, SETTINGS.RGB.G, SETTINGS.RGB.B)
-                end
-                if decoded.MenuAccentRGB then
-                    SETTINGS.MenuAccentRGB = decoded.MenuAccentRGB
-                    SETTINGS.MenuAccent = Color3.fromRGB(SETTINGS.MenuAccentRGB.R, SETTINGS.MenuAccentRGB.G, SETTINGS.MenuAccentRGB.B)
-                end
-                if decoded.Favorites and type(decoded.Favorites) == "table" then favoritesUserIds = decoded.Favorites end
-                if decoded.MenuBind then SETTINGS.MenuBind = decoded.MenuBind end
-                if decoded.Watermark then SETTINGS.Watermark = decoded.Watermark end
-            end
-        end)
-    end
-end
-
-local function NormalizeEspSetting(key, defaultColor)
-    local cfg = SETTINGS[key]
-    if type(cfg) ~= "table" then
-        SETTINGS[key] = {
-            Enabled = false,
-            Color = defaultColor,
-            RGB = {R = math.floor(defaultColor.R * 255), G = math.floor(defaultColor.G * 255), B = math.floor(defaultColor.B * 255)}
+    local function SaveConfig()
+        local dataToSave = {
+            BoxESP = SETTINGS.BoxESP,
+            NameESP = SETTINGS.NameESP,
+            Distance = SETTINGS.Distance,
+            Tracers = SETTINGS.Tracers,
+            Fullbright = SETTINGS.Fullbright,
+            FOV = SETTINGS.FOV,
+            RGB = SETTINGS.RGB,
+            MenuAccentRGB = SETTINGS.MenuAccentRGB,
+            Favorites = favoritesUserIds,
+            MenuBind = SETTINGS.MenuBind
         }
-        return
+        if writefile then pcall(function() writefile(ConfigName, HttpService:JSONEncode(dataToSave)) end) end
     end
-    if cfg.Enabled == nil then cfg.Enabled = false end
-    if cfg.Color == nil then cfg.Color = defaultColor end
-    if cfg.RGB == nil then
-        cfg.RGB = {R = math.floor(cfg.Color.R * 255), G = math.floor(cfg.Color.G * 255), B = math.floor(cfg.Color.B * 255)}
+
+    local function LoadConfig()
+        if isfile and isfile(ConfigName) then
+            pcall(function()
+                local decoded = HttpService:JSONDecode(readfile(ConfigName))
+                if decoded then
+                    if decoded.BoxESP then SETTINGS.BoxESP = decoded.BoxESP end
+                    if decoded.NameESP then SETTINGS.NameESP = decoded.NameESP end
+                    if decoded.Distance then SETTINGS.Distance = decoded.Distance end
+                    if decoded.Tracers then SETTINGS.Tracers = decoded.Tracers end
+                    if decoded.Fullbright then SETTINGS.Fullbright = decoded.Fullbright end
+                    if decoded.FOV then SETTINGS.FOV = decoded.FOV end
+                    if decoded.RGB then
+                        SETTINGS.RGB = decoded.RGB
+                        SETTINGS.Color = Color3.fromRGB(SETTINGS.RGB.R, SETTINGS.RGB.G, SETTINGS.RGB.B)
+                    end
+                    if decoded.MenuAccentRGB then
+                        SETTINGS.MenuAccentRGB = decoded.MenuAccentRGB
+                        SETTINGS.MenuAccent = Color3.fromRGB(SETTINGS.MenuAccentRGB.R, SETTINGS.MenuAccentRGB.G, SETTINGS.MenuAccentRGB.B)
+                    end
+                    if decoded.Favorites and type(decoded.Favorites) == "table" then favoritesUserIds = decoded.Favorites end
+                    if decoded.MenuBind then SETTINGS.MenuBind = decoded.MenuBind end
+                end
+            end)
+        end
     end
-end
 
-LoadConfig()
-
-NormalizeEspSetting("BoxESP", Color3.fromRGB(0, 255, 180))
-NormalizeEspSetting("NameESP", Color3.fromRGB(255, 255, 255))
-NormalizeEspSetting("Distance", Color3.fromRGB(255, 215, 0))
-NormalizeEspSetting("Tracers", Color3.fromRGB(255, 80, 80))
-
-local ESP_COLOR_CHOICES
-local CreateAccentColorPicker
-
-CreateAccentColorPicker = function(page, title)
-    local frame = Instance.new("Frame", page)
-    frame.Size = UDim2.new(1, -10, 0, 90)
-    frame.BackgroundColor3 = THEME.Panel
-    frame.ZIndex = 1
-    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, THEME.CornerSmall)
-
-    local frameStroke = Instance.new("UIStroke", frame)
-    frameStroke.Thickness = 1
-    frameStroke.Color = THEME.Border
-    frameStroke.Transparency = 0.6
-    frameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    
-    local label = Instance.new("TextLabel", frame)
-    label.Text = title
-    label.Font = Enum.Font.GothamSemibold
-    label.TextColor3 = THEME.Text
-    label.Position = UDim2.new(0, 15, 0, 10)
-    label.Size = UDim2.new(1, -30, 0, 20)
-    label.BackgroundTransparency = 1
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    
-    local container = Instance.new("Frame", frame)
-    container.Position = UDim2.new(0, 15, 0, 35)
-    container.Size = UDim2.new(1, -30, 0, 40)
-    container.BackgroundTransparency = 1
-
-    local layout = Instance.new("UIListLayout", container)
-    layout.FillDirection = Enum.FillDirection.Horizontal
-    layout.Padding = UDim.new(0, 8)
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-    
-    for _, col in ipairs(ESP_COLOR_CHOICES) do
-        local btn = Instance.new("TextButton", container)
-        btn.Size = UDim2.new(0, 30, 0, 30)
-        btn.BackgroundColor3 = col
-        btn.Text = ""
-        btn.ZIndex = 1
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-
-        local bStroke = Instance.new("UIStroke", btn)
-        bStroke.Name = "Stroke"
-        bStroke.Thickness = 1
-        bStroke.Color = THEME.Border
-        bStroke.Transparency = 0.55
-        bStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-        AddHover(btn, col, col)
-        btn.MouseButton1Click:Connect(function()
-            SETTINGS.MenuAccent = col
-            SETTINGS.MenuAccentRGB = {
-                R = math.floor(col.R * 255),
-                G = math.floor(col.G * 255),
-                B = math.floor(col.B * 255)
+    local function NormalizeEspSetting(key, defaultColor)
+        local cfg = SETTINGS[key]
+        if type(cfg) ~= "table" then
+            SETTINGS[key] = {
+                Enabled = false,
+                Color = defaultColor,
+                RGB = {R = math.floor(defaultColor.R * 255), G = math.floor(defaultColor.G * 255), B = math.floor(defaultColor.B * 255)}
             }
-            UpdateAccentColor()
-            SaveConfig()
-        end)
+            return
+        end
+        if cfg.Enabled == nil then cfg.Enabled = false end
+        if cfg.Color == nil then cfg.Color = defaultColor end
+        if cfg.RGB == nil then
+            cfg.RGB = {R = math.floor(cfg.Color.R * 255), G = math.floor(cfg.Color.G * 255), B = math.floor(cfg.Color.B * 255)}
+        end
     end
 
-    return frame
-end
+    LoadConfig()
 
-ESP_COLOR_CHOICES = {
-    Color3.fromRGB(0, 255, 180),
-    Color3.fromRGB(255, 50, 50),
-    Color3.fromRGB(50, 255, 50),
-    Color3.fromRGB(50, 100, 255),
-    Color3.fromRGB(255, 255, 0),
-    Color3.fromRGB(255, 0, 255),
-    Color3.fromRGB(150, 0, 255),
-    Color3.fromRGB(255, 150, 0),
-    Color3.fromRGB(255, 255, 255),
-    Color3.fromRGB(0, 0, 0)
-}
+    NormalizeEspSetting("BoxESP", Color3.fromRGB(0, 255, 180))
+    NormalizeEspSetting("NameESP", Color3.fromRGB(255, 255, 255))
+    NormalizeEspSetting("Distance", Color3.fromRGB(255, 215, 0))
+    NormalizeEspSetting("Tracers", Color3.fromRGB(255, 80, 80))
+
+    local ESP_COLOR_CHOICES
+    local CreateAccentColorPicker
+
+    CreateAccentColorPicker = function(page, title)
+        local frame = Instance.new("Frame", page)
+        frame.Size = UDim2.new(1, -10, 0, 90)
+        frame.BackgroundColor3 = THEME.Panel
+        frame.ZIndex = 1
+        Instance.new("UICorner", frame).CornerRadius = UDim.new(0, THEME.CornerSmall)
+
+        local frameStroke = Instance.new("UIStroke", frame)
+        frameStroke.Thickness = 1
+        frameStroke.Color = THEME.Border
+        frameStroke.Transparency = 0.6
+        frameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        
+        local label = Instance.new("TextLabel", frame)
+        label.Text = title
+        label.Font = Enum.Font.GothamSemibold
+        label.TextColor3 = THEME.Text
+        label.Position = UDim2.new(0, 15, 0, 10)
+        label.Size = UDim2.new(1, -30, 0, 20)
+        label.BackgroundTransparency = 1
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        
+        local container = Instance.new("Frame", frame)
+        container.Position = UDim2.new(0, 15, 0, 35)
+        container.Size = UDim2.new(1, -30, 0, 40)
+        container.BackgroundTransparency = 1
+
+        local layout = Instance.new("UIListLayout", container)
+        layout.FillDirection = Enum.FillDirection.Horizontal
+        layout.Padding = UDim.new(0, 8)
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+        
+        for _, col in ipairs(ESP_COLOR_CHOICES) do
+            local btn = Instance.new("TextButton", container)
+            btn.Size = UDim2.new(0, 30, 0, 30)
+            btn.BackgroundColor3 = col
+            btn.Text = ""
+            btn.ZIndex = 1
+            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+
+            local bStroke = Instance.new("UIStroke", btn)
+            bStroke.Name = "Stroke"
+            bStroke.Thickness = 1
+            bStroke.Color = THEME.Border
+            bStroke.Transparency = 0.55
+            bStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+            AddHover(btn, col, col)
+            btn.MouseButton1Click:Connect(function()
+                SETTINGS.MenuAccent = col
+                SETTINGS.MenuAccentRGB = {
+                    R = math.floor(col.R * 255),
+                    G = math.floor(col.G * 255),
+                    B = math.floor(col.B * 255)
+                }
+                UpdateAccentColor()
+                SaveConfig()
+            end)
+        end
+
+        return frame
+    end
+
+    ESP_COLOR_CHOICES = {
+        Color3.fromRGB(0, 255, 180),
+        Color3.fromRGB(255, 50, 50),
+        Color3.fromRGB(50, 255, 50),
+        Color3.fromRGB(50, 100, 255),
+        Color3.fromRGB(255, 255, 0),
+        Color3.fromRGB(255, 0, 255),
+        Color3.fromRGB(150, 0, 255),
+        Color3.fromRGB(255, 150, 0),
+        Color3.fromRGB(255, 255, 255),
+        Color3.fromRGB(0, 0, 0)
+    }
 
     local function BindToText(bind)
         if type(bind) ~= "table" then
@@ -523,31 +477,12 @@ ESP_COLOR_CHOICES = {
 
     -- --- GUI SETUP ---
     local screenName = "UniversalScript_UI"
-    local coreGuiOk, coreGuiService = pcall(function() return CoreGui end)
-    if not coreGuiOk or not coreGuiService then
-        coreGuiService = nil
-    end
-    pcall(function()
-        if coreGuiService then
-            local existing = coreGuiService:FindFirstChild(screenName)
-            if existing then
-                existing:Destroy()
-            end
-        end
-    end)
-    pcall(function()
-        local existing = player.PlayerGui:FindFirstChild(screenName)
-        if existing then
-            existing:Destroy()
-        end
-    end)
+    if game:GetService("CoreGui"):FindFirstChild(screenName) then game:GetService("CoreGui")[screenName]:Destroy() end
+    if player.PlayerGui:FindFirstChild(screenName) then player.PlayerGui[screenName]:Destroy() end
 
     local gui = Instance.new("ScreenGui")
     gui.Name = screenName
-    if not pcall(function() gui.Parent = coreGuiService end) then
-        gui.Parent = player.PlayerGui
-    end
-
+    if pcall(function() gui.Parent = CoreGui end) then else gui.Parent = player.PlayerGui end
     gui.ResetOnSpawn = false
     gui.IgnoreGuiInset = true
     gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -621,61 +556,13 @@ ESP_COLOR_CHOICES = {
         end)
     end
 
-    local function UpdateWatermarkText()
-        if not watermarkLabel or not watermarkFrame then
-            return
-        end
-        if not SETTINGS.Watermark.Enabled then
-            watermarkFrame.Visible = false
-            return
-        end
-
-        watermarkFrame.Visible = true
-        local pingText = pingCache and (tostring(pingCache) .. "ms") or "--"
-        local text = menuName .. "  |  FPS: " .. tostring(fpsValue) .. "  |  Ping: " .. pingText
-        if watermarkLabel.Text ~= text then
-            watermarkLabel.Text = text
-            local bounds = TextService:GetTextSize(text, watermarkLabel.TextSize, watermarkLabel.Font, Vector2.new(600, 50))
-            watermarkFrame.Size = UDim2.new(0, bounds.X + 28, 0, 24)
-        end
-    end
-
-    local function CreateWatermark()
-        local frame = Instance.new("Frame", gui)
-        frame.Name = "Watermark"
-        frame.AnchorPoint = Vector2.new(0.5, 0)
-        frame.Position = UDim2.new(0.5, 0, 0, 8)
-        frame.Size = UDim2.new(0, 260, 0, 24)
-        frame.BackgroundColor3 = THEME.Panel
-        frame.BackgroundTransparency = 0.35
-        frame.ZIndex = 2001
-        frame.Visible = SETTINGS.Watermark.Enabled
-        Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
-
-        local stroke = Instance.new("UIStroke", frame)
-        stroke.Name = "Stroke"
-        stroke.Thickness = 1
-        stroke.Color = SETTINGS.MenuAccent
-        stroke.Transparency = 0.45
-        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-        local label = Instance.new("TextLabel", frame)
-        label.BackgroundTransparency = 1
-        label.Position = UDim2.new(0, 10, 0, 0)
-        label.Size = UDim2.new(1, -20, 1, 0)
-        label.Font = Enum.Font.GothamSemibold
-        label.TextSize = 12
-        label.TextColor3 = THEME.Text
-        label.TextXAlignment = Enum.TextXAlignment.Center
-        label.Text = menuName .. "  |  FPS: --  |  Ping: --"
-        label.ZIndex = frame.ZIndex + 1
-
-        watermarkFrame = frame
-        watermarkLabel = label
-        UpdateWatermarkText()
-    end
-
-    CreateWatermark()
+    -- ESP Layer
+    local espLayer = Instance.new("Frame", gui)
+    espLayer.Name = "ESP_Layer"
+    espLayer.Size = UDim2.new(1,0,1,0)
+    espLayer.BackgroundTransparency = 1
+    espLayer.Visible = true
+    espLayer.ZIndex = 50
 
     -- Main Frame
     local mainFrame = Instance.new("Frame", gui)
@@ -1069,13 +956,6 @@ ESP_COLOR_CHOICES = {
             if page and page:IsA("ScrollingFrame") then
                 page.ScrollBarImageColor3 = SETTINGS.MenuAccent
             end
-        end
-        if watermarkFrame then
-            local stroke = watermarkFrame:FindFirstChild("Stroke")
-            if stroke then
-                stroke.Color = SETTINGS.MenuAccent
-            end
-            UpdateWatermarkText()
         end
     end
 
@@ -1622,12 +1502,6 @@ ESP_COLOR_CHOICES = {
 
     CreateToggle(dashLeftContent, "Anti-AFK", "AntiAFK")
     CreateToggle(dashLeftContent, "Stuff Detection", "StaffDetect")
-    CreateToggle(dashLeftContent, "Watermark", "Watermark", function(isOn)
-        if watermarkFrame then
-            watermarkFrame.Visible = isOn
-        end
-        UpdateWatermarkText()
-    end)
 
     local fpsBoostToggleInitialized = false
     CreateToggle(dashRightContent, "FPS BOOST", "FPSBoost", function(isOn)
@@ -2793,26 +2667,6 @@ end
         local char = player.Character
         local hum = char and char:FindFirstChild("Humanoid")
         local myHrp = char and char:FindFirstChild("HumanoidRootPart")
-
-        if lastFrameTime > 0 then
-            fpsTimer += now - lastFrameTime
-            fpsFrames += 1
-            if fpsTimer >= 1 then
-                fpsValue = math.max(1, math.floor((fpsFrames / fpsTimer) + 0.5))
-                fpsTimer = 0
-                fpsFrames = 0
-            end
-        end
-        lastFrameTime = now
-
-        if (now - lastPingCheck) >= 1 then
-            pingCache = GetPingMs()
-            lastPingCheck = now
-        end
-        if (now - lastFpsUpdate) >= 0.25 then
-            UpdateWatermarkText()
-            lastFpsUpdate = now
-        end
 
         UpdateESP(now)
         UpdateCameraLock()
